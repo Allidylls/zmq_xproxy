@@ -12,10 +12,10 @@
 #define unlikely(x) (x)
 #endif
 
-char *xreq_host = "tcp://*:1234";
-char *xrep_host = "tcp://*:5678";
+char *xreq_host      = "tcp://*:1234";
+char *xrep_host      = "tcp://*:5678";
 char *dump_file_name = "zmq_xproxy.dump";
-int is_debug = 0;
+int  is_debug        = 0;
 
 FILE *dump_file = NULL;
 
@@ -74,6 +74,7 @@ void xcapture(zmq::message_t *msg_, bool is_m2a)
         fprintf(dump_file, "[");
         fwrite(msg_->data(), 1, msg_->size(), dump_file);
         fprintf(dump_file, "]\n");
+        fflush(dump_file);
     }
 }
 
@@ -84,23 +85,23 @@ int xforward(zmq::socket_t *from_, zmq::socket_t *to_, bool is_m2a)
     size_t moresz;
     while (true) {
         zmq::message_t *msg_ = new zmq::message_t();
-        from_->recv (msg_);
+        from_->recv(msg_);
         msg_array.push_back(msg_);
         moresz = sizeof more;
-        from_->getsockopt (ZMQ_RCVMORE, &more, &moresz);
+        from_->getsockopt(ZMQ_RCVMORE, &more, &moresz);
         xcapture(msg_, is_m2a);
         if (more == 0) break;
     }
 
     // swap the request client and reply server socket IDs
     int msg_size = msg_array.size();
-    if (msg_size >=3 ) {
+    if (msg_size > 2 ) {
         std::swap(msg_array[0], msg_array[2]);
     }
 
     // forward all messages
     for (int i = 0; i<msg_size; i++) {
-        to_->send (*(msg_array[i]), i<msg_size-1 ? ZMQ_SNDMORE : 0);
+        to_->send(*(msg_array[i]), i<msg_size-1 ? ZMQ_SNDMORE : 0);
         delete (msg_array[i]);
     }
 
@@ -108,7 +109,7 @@ int xforward(zmq::socket_t *from_, zmq::socket_t *to_, bool is_m2a)
 }
 
 // proxy router - router messages
-int xproxy (zmq::socket_t *frontend_, zmq::socket_t *backend_)
+int xproxy(zmq::socket_t *frontend_, zmq::socket_t *backend_)
 {
     int rc;
 
@@ -126,26 +127,26 @@ int xproxy (zmq::socket_t *frontend_, zmq::socket_t *backend_)
 
     while (true) {
         //  Wait while there are either requests or replies to process.
-        rc = zmq::poll (items, 2, -1);
-        if (unlikely (rc < 0)) return -1;
+        rc = zmq::poll(items, 2, -1);
+        if (unlikely(rc < 0)) return -1;
 
         //  Get the pollout separately because when combining this with pollin it maxes the CPU
         //  because pollout shall most of the time return directly.
         //  POLLOUT is only checked when frontend and backend sockets are not the same.
         if (frontend_ != backend_) {
-            rc = zmq::poll (itemsout, 2, 0);
-            if (unlikely (rc < 0)) return -1;
+            rc = zmq::poll(itemsout, 2, 0);
+            if (unlikely(rc < 0)) return -1;
         }
 
         //  Process a request
         if (items [0].revents & ZMQ_POLLIN &&  (frontend_ == backend_ || itemsout [1].revents & ZMQ_POLLOUT)) {
             rc = xforward(frontend_, backend_, false);
-            if (unlikely (rc < 0)) return -1;
+            if (unlikely(rc < 0)) return -1;
         }
         //  Process a reply
         if (frontend_ != backend_ &&  items [1].revents & ZMQ_POLLIN &&  itemsout [0].revents & ZMQ_POLLOUT) {
             rc = xforward(backend_, frontend_, true);
-            if (unlikely (rc < 0)) return -1;
+            if (unlikely(rc < 0)) return -1;
         }
     }
     return 0;
